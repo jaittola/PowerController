@@ -18,10 +18,9 @@
 
 #define STATE_NONE -1   // No state change
 #define STATE_START 0
-#define STATE_OUTPUT_SELECT 1
-#define STATE_OUTPUT_SHOW 2
-#define STATE_OUTPUT_EDIT 3
-#define STATE_END (STATE_OUTPUT_EDIT + 1)     // Keep this last_state + 1
+#define STATE_DEVICE_SHOW 1
+#define STATE_DEVICE_SET 2
+#define STATE_END (STATE_DEVICE_SET + 1)     // Keep this last_state + 1
 
 #define OS_NONE -1
 #define OS_OFF 0
@@ -51,21 +50,17 @@ struct state {
 
 struct state states[] = {
   { STATE_START, 
-    "PowerManager", "Outputs", NULL, NULL, 
-    NULL, NULL, NULL, NULL,
-    toStateOutputSelect, NULL, NULL },
-  { STATE_OUTPUT_SELECT, 
-    NULL, "Next", "Top", "Set",
+    "Chrgr  Boilr", NULL, NULL, NULL, 
+    NULL, chargerOutputStateText, NULL, boilerOutputStateText,
+    toStateChargerShow, NULL, toStateBoilerShow },
+  { STATE_DEVICE_SHOW,
+    NULL, "++", "Up", NULL,
     currentOutputStateText, NULL, NULL, NULL,
-    nextOutput, toStateStart, toStateOutputShow },
-  { STATE_OUTPUT_SHOW,
-    NULL, NULL, "Up", NULL,
-    currentOutputStateText, nextOutputStateBtnText, NULL, NULL,
-    toStateOutputEdit, toStateOutputSelect, NULL },
-  { STATE_OUTPUT_EDIT,
-    NULL, NULL, "Up", "Yes",
-    switchStateText, nextOutputStateBtnText, NULL, NULL,
-    toStateOutputEdit, toStateOutputSelect, stateCommit },
+    toStateDeviceSet, toStateStart, NULL },
+  { STATE_DEVICE_SET,
+    NULL, "++", "Up", "Yes",
+    changeCurrentOutputStateText, NULL, NULL, NULL,
+    toStateDeviceSet, toStateStart, stateCommit },
   { STATE_END, 
     NULL, NULL, NULL, NULL, 
     NULL, NULL, NULL, NULL,
@@ -85,6 +80,9 @@ struct output outputs[] = {
   { NULL, OS_NONE, OS_NONE, NONE_PIN },
 };
 
+#define OUTPUT_BOILER 0
+#define OUTPUT_CHARGER 1
+
 int currentState = 0;
 int prevBtnDown = 0;
 int btnDown = 0;
@@ -95,54 +93,41 @@ LiquidCrystal lcd(LCD_RS_PIN, LCD_ENABLE_PIN,
                   LCD_D4_PIN, LCD_D5_PIN,
                   LCD_D6_PIN, LCD_D7_PIN);
 
-int toStateOutputSelect() {
-  return STATE_OUTPUT_SELECT;
+int toStateChargerShow() {
+  currentOutput = OUTPUT_CHARGER;
+  return STATE_DEVICE_SHOW;
 }
 
-int toStateOutputShow() {
-  outputs[currentOutput].pendingState = outputs[currentOutput].state;
-
-  return STATE_OUTPUT_SHOW;
+int toStateBoilerShow() {
+  currentOutput = OUTPUT_BOILER;
+  return STATE_DEVICE_SHOW;
 }
 
 int toStateStart() {
   return STATE_START;
 }
 
-int toStateOutputEdit() {
-  toggleOutputPendingState();
-  return STATE_OUTPUT_EDIT;
+int toStateDeviceSet() {
+  ++outputs[currentOutput].pendingState;
+  if (outputs[currentOutput].pendingState >= OS_END) {
+    outputs[currentOutput].pendingState = OS_OFF;
+  }
+
+  return STATE_DEVICE_SET;
 }
 
 int stateCommit() {  
   outputs[currentOutput].state = outputs[currentOutput].pendingState;
   
-  return STATE_OUTPUT_SHOW;
+  return STATE_START;
 }
 
-int nextOutput() {
-  ++currentOutput;
-  if (NULL == outputs[currentOutput].name) {
-    currentOutput = 0;
-  }
-  return STATE_NONE;
+char *chargerOutputStateText() {
+  return osOutputStateText(outputs[OUTPUT_CHARGER].state);
 }
 
-void toggleOutputPendingState() {
-  ++outputs[currentOutput].pendingState;
-  if (outputs[currentOutput].pendingState >= OS_END) {
-    outputs[currentOutput].pendingState = OS_OFF;
-  }
-}
-
-char *switchStateText() {
-  static char switchBuffer[30];  // NOTE Limits the length of outputs
-  
-  strcpy(switchBuffer, "Switch ");
-  strcat(switchBuffer, osOutputStateText(outputs[currentOutput].pendingState));
-  strcat(switchBuffer, "?");
-  
-  return switchBuffer;
+char *boilerOutputStateText() {
+  return osOutputStateText(outputs[OUTPUT_BOILER].state);
 }
 
 char *osOutputStateText(int outputState) {
@@ -158,10 +143,6 @@ char *osOutputStateText(int outputState) {
   return "";
 }
 
-char *nextOutputStateBtnText() {
-  return osOutputStateText(outputs[currentOutput].pendingState + 1);
-}
-
 char *currentOutputStateText() {
   static char stateBuffer[30];  // NOTE: Limits the length of outputs!
 
@@ -170,6 +151,17 @@ char *currentOutputStateText() {
   strcat(stateBuffer, osOutputStateText(outputs[currentOutput].state));
 
   return stateBuffer;
+}
+
+char *changeCurrentOutputStateText() {
+  static char switchBuffer[30];  // NOTE Limits the length of outputs
+  
+  strcpy(switchBuffer, outputs[currentOutput].name);
+  strcat(switchBuffer, " ");
+  strcat(switchBuffer, osOutputStateText(outputs[currentOutput].pendingState));
+  strcat(switchBuffer, "?");
+  
+  return switchBuffer;
 }
 
 void findNextState(int nextState) {
@@ -227,14 +219,13 @@ void printTexts(struct state *state) {
   
   // Prepare the texts for the LCD                         
   char bottomRow[20];
-  strcpy(bottomRow, stateText(state->btn1FixedText,
-                              state->btn1TextFunc));
-  strcat(bottomRow, " ");
-  strcat(bottomRow, stateText(state->btn2FixedText,
-                              state->btn2TextFunc));
-  strcat(bottomRow, " ");
-  strcat(bottomRow, stateText(state->btn3FixedText,
-                              state->btn3TextFunc));
+  snprintf(bottomRow, 20, "%-3.3s %-4.4s %3.3s", 
+           stateText(state->btn1FixedText,
+                     state->btn1TextFunc),
+           stateText(state->btn2FixedText,
+                     state->btn2TextFunc),
+           stateText(state->btn3FixedText,
+                     state->btn3TextFunc));
   
   lcd.clear();
   lcd.setCursor(0, 0);
